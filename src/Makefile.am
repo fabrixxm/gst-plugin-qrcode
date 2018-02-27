@@ -1,17 +1,7 @@
 # Note: plugindir is set in configure
 
-##############################################################################
-# TODO: change libgstplugin.la to something else, e.g. libmysomething.la     #
-##############################################################################
 plugin_LTLIBRARIES = libgstqrcodedec.la
 
-##############################################################################
-# TODO: for the next set of variables, name the prefix if you named the .la, #
-#  e.g. libmysomething.la => libmysomething_la_SOURCES                       #
-#                            libmysomething_la_CFLAGS                        #
-#                            libmysomething_la_LIBADD                        #
-#                            libmysomething_la_LDFLAGS                       #
-##############################################################################
 
 ## Plugin 1
 
