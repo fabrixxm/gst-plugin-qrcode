@@ -11,6 +11,11 @@ install-sh
 ltmain.sh
 missing
 stamp-*
-my-plugin-*.tar.*
+gst-qrcode-*.tar.*
 *~
+src/.deps/*
+src/.libs/*
+src/*.la
+src/*.lo
+Makefile
 
