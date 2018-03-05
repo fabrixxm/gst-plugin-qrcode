@@ -46,7 +46,12 @@
 /**
  * SECTION:element-qrcodedec
  *
- * FIXME:Describe qrcodedec here.
+ * qrcodedec is a video filter that decodes qrcode found in frame
+ * and emit "qrcode" signal with decoded string.
+ *
+ * Video buffer is passed untouched to the src pad.
+ *
+ * It supports only raw RGB video at 320x240 px
  *
  * <refsect2>
  * <title>Example launch line</title>
@@ -70,7 +75,6 @@ GST_DEBUG_CATEGORY_STATIC (gst_qrcode_dec_debug);
 /* Filter signals and args */
 enum
 {
-  /* FILL ME */
   SIGNAL_QRCODE,
   LAST_SIGNAL
 };
@@ -249,23 +253,20 @@ gst_qrcode_dec_sink_event (GstPad * pad, GstObject * parent, GstEvent * event)
       gst_event_parse_caps (event, &caps);
       /* do something with the caps */
   
-      if (filter->silent == FALSE)    
-        g_print("[V][C] %d structs in caps\n", gst_caps_get_size(caps));
-      
-      capstruct = gst_caps_get_structure(caps, 0);
-      
-      if (filter->silent == FALSE)
-        g_print("[V][C] %s\n", gst_structure_to_string(capstruct));
-      
-      gst_structure_get_int (capstruct, "width", &(filter->width));
-      gst_structure_get_int (capstruct, "height", &(filter->height));
-      
-      if (filter->silent == FALSE)
-        g_print("[V][C] size: %dx%d\n", filter->width, filter->height);
-      
-      if (quirc_resize(filter->qr, filter->width, filter->height) < 0)
-  	    GST_ERROR_OBJECT (filter, "Failed to allocate qirc video memory");
-  	    
+  
+      if (filter->qr != NULL && gst_caps_get_size(caps)>0) {
+        capstruct = gst_caps_get_structure(caps, 0);
+
+        GST_LOG_OBJECT (filter, "Caps: %s", gst_structure_to_string(capstruct));
+        
+        gst_structure_get_int (capstruct, "width", &(filter->width));
+        gst_structure_get_int (capstruct, "height", &(filter->height));
+        
+        GST_LOG_OBJECT (filter, "Frame size: %dx%d\n", filter->width, filter->height);
+        
+        if (quirc_resize(filter->qr, filter->width, filter->height) < 0)
+    	    GST_ERROR_OBJECT (filter, "Failed to allocate qirc video memory");
+    	  }
       break;
     }
     default:
@@ -287,64 +288,62 @@ gst_qrcode_dec_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
 
   filter = GST_QRCODEDEC (parent);
 
-  /*
-  if (filter->silent == FALSE)
-    g_print ("I'm plugged, therefore I'm in.\n");
-  */
-  
-  // quirc image and w/h
-  uint8_t *image;
-  int w, h;
+  if (filter->qr != NULL) {
+    // quirc image and w/h
+    uint8_t *image;
+    int w, h;
 
-  image = quirc_begin(filter->qr, &w, &h);
-  
-  // get memory from buffer
-  guint nmem=0;
- 
-  GstMemory *mem = gst_buffer_peek_memory(buf,nmem);
-  GstMapInfo info = GST_MAP_INFO_INIT;
-  gst_memory_map (mem, &info,GST_MAP_WRITE);
-  
-  // grayscale copy of frame into quirc image    
-  for (gsize k=0; k<info.size; k+=3 ) {
-    guint r = *(info.data + k + 0);
-    guint g = *(info.data + k + 1);
-    guint b = *(info.data + k + 2);
-    guint gray = (r + g + b) / 3;
-    *image = gray;
-    image++;
-  }
-  
-  // frame end. look for qurcode.
-  quirc_end(filter->qr);
-  
-  
-  
-  
-  // Parse found qrcodes and send event
-  int num_codes;
-  int i;
-
-  num_codes = quirc_count(filter->qr);
-  for (i = 0; i < num_codes; i++) {
-    struct quirc_code code;
-    struct quirc_data data;
-    quirc_decode_error_t err;
-
-    quirc_extract(filter->qr, i, &code);
-
-    /* Decoding stage */
-    err = quirc_decode(&code, &data);
-    if (!err) {
-      g_signal_emit(filter, gst_qrcode_dec_signals[SIGNAL_QRCODE],0, data.payload);
-      if (filter->silent == FALSE)
-        g_print("Data: %s\n", data.payload);
-    }
-  }
-
-   
+    image = quirc_begin(filter->qr, &w, &h);
     
-  gst_memory_unmap (mem, &info);
+    // get memory from buffer
+    guint nmem=0;
+   
+    GstMemory *mem = gst_buffer_peek_memory(buf,nmem);
+    GstMapInfo info = GST_MAP_INFO_INIT;
+    // TODO: use GST_MAP_WRITE and draw qrcode bounding box
+    gst_memory_map (mem, &info,GST_MAP_READ);
+    
+    // grayscale copy of frame into quirc image    
+    for (gsize k=0; k<info.size; k+=3 ) {
+      guint r = *(info.data + k + 0);
+      guint g = *(info.data + k + 1);
+      guint b = *(info.data + k + 2);
+      guint gray = (r + g + b) / 3;
+      *image = gray;
+      image++;
+    }
+    
+    // frame end. look for qurcode.
+    quirc_end(filter->qr);
+    
+    
+    
+    
+    // Parse found qrcodes and send event
+    int num_codes;
+    int i;
+
+    num_codes = quirc_count(filter->qr);
+    for (i = 0; i < num_codes; i++) {
+      struct quirc_code code;
+      struct quirc_data data;
+      quirc_decode_error_t err;
+
+      quirc_extract(filter->qr, i, &code);
+
+      /* Decoding stage */
+      err = quirc_decode(&code, &data);
+      if (!err) {
+        g_signal_emit(filter, gst_qrcode_dec_signals[SIGNAL_QRCODE],0, data.payload);
+        GST_LOG_OBJECT (filter, "data: %s", data.payload);
+      }
+    }
+
+     
+      
+    gst_memory_unmap (mem, &info);
+
+  }
   
   /* just push out the incoming buffer without touching it */
   return gst_pad_push (filter->srcpad, buf);
@@ -366,8 +365,8 @@ gst_qrcode_dec_change_state (GstElement *element, GstStateChange transition)
   //upward state change**
   switch (transition) {
     case GST_STATE_CHANGE_NULL_TO_READY:
-        if (filter->silent == FALSE)
-          g_print("[S] null to ready\n");
+        GST_LOG_OBJECT (filter, "null to ready");
+        if (filter->qr != NULL) quirc_destroy(filter->qr);
         filter->qr = quirc_new();
         if (!filter->qr)
           GST_ERROR_OBJECT (filter, "couldn't create quirc element");
@@ -383,9 +382,11 @@ gst_qrcode_dec_change_state (GstElement *element, GstStateChange transition)
   //Downwards state change;**
   switch (transition) {
     case GST_STATE_CHANGE_READY_TO_NULL:
-        if (filter->silent == FALSE)
-          g_print("[S] ready to null\n");
-        quirc_destroy(filter->qr);
+        GST_LOG_OBJECT (filter, "ready to null");
+        if (filter->qr != NULL) {  
+          quirc_destroy(filter->qr);
+          filter->qr = NULL;
+        }
       break;
     default:
       break;
@@ -403,7 +404,6 @@ qrcodedec_init (GstPlugin * qrcodedec)
 {
   /* debug category for fltering log messages
    *
-   * exchange the string 'Template qrcodedec' with your description
    */
   GST_DEBUG_CATEGORY_INIT (gst_qrcode_dec_debug, "qrcodedec",
       0, "QRCode decoder");
@@ -418,12 +418,11 @@ qrcodedec_init (GstPlugin * qrcodedec)
  * compile this code. GST_PLUGIN_DEFINE needs PACKAGE to be defined.
  */
 #ifndef PACKAGE
-#define PACKAGE "myfirstqrcodedec"
+#define PACKAGE "gst-qrcode"
 #endif
 
 /* gstreamer looks for this structure to register qrcodedecs
  *
- * exchange the string 'Template qrcodedec' with your qrcodedec description
  */
 GST_PLUGIN_DEFINE (
     GST_VERSION_MAJOR,
@@ -436,3 +435,4 @@ GST_PLUGIN_DEFINE (
     "GStreamer",
     "http://gstreamer.net/"
 )
+
