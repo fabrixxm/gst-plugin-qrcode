@@ -73,6 +73,7 @@ struct _GstQRCodeDec
   GstPad *sinkpad, *srcpad;
 
   gboolean silent;
+  gboolean message;
   
   struct quirc *qr;
   

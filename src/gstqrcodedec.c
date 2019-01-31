@@ -49,6 +49,12 @@
  * qrcodedec is a video filter that decodes qrcode found in frame
  * and emit "qrcode" signal with decoded string.
  *
+ * From version 0.2, the element generate messages named `barcode`.
+ * The structure containes these fields:
+ *
+ * #GstClockTime `timestamp`: the timestamp of the buffer that triggered the message.
+ * gchar * `symbol`: the deteted bar code data.
+ *
  * Video buffer is passed untouched to the src pad.
  *
  * It supports only raw RGB video at 320x240 px
@@ -84,7 +90,8 @@ static guint gst_qrcode_dec_signals[LAST_SIGNAL] = { 0 };
 enum
 {
   PROP_0,
-  PROP_SILENT
+  PROP_SILENT,
+  PROP_MESSAGE
 };
 
 /* the capabilities of the inputs and outputs.
@@ -145,9 +152,15 @@ gst_qrcode_dec_class_init (GstQRCodeDecClass * klass)
           TRUE, G_PARAM_READWRITE));
 
 
+  g_object_class_install_property (gobject_class, PROP_MESSAGE,
+      g_param_spec_boolean ("message", "message",
+          "Post a barcode message for each detected code",
+          TRUE, G_PARAM_READWRITE | G_PARAM_STATIC_STRINGS));
+
+
   GType params[] = {G_TYPE_STRING};
   gst_qrcode_dec_signals[SIGNAL_QRCODE] =g_signal_newv (
-    "qrcode", 
+    "qrcode",
     G_TYPE_FROM_CLASS (klass), 
     G_SIGNAL_RUN_LAST | G_SIGNAL_NO_RECURSE | G_SIGNAL_NO_HOOKS,
     NULL /* closure */,
@@ -194,6 +207,7 @@ gst_qrcode_dec_init (GstQRCodeDec * filter)
   gst_element_add_pad (GST_ELEMENT (filter), filter->srcpad);
 
   filter->silent = TRUE;
+  filter->message = TRUE;
   filter->qr = NULL;
   
 }
@@ -207,6 +221,9 @@ gst_qrcode_dec_set_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_SILENT:
       filter->silent = g_value_get_boolean (value);
+      break;
+    case PROP_MESSAGE:
+      filter->message = g_value_get_boolean (value);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -223,6 +240,9 @@ gst_qrcode_dec_get_property (GObject * object, guint prop_id,
   switch (prop_id) {
     case PROP_SILENT:
       g_value_set_boolean (value, filter->silent);
+      break;
+    case PROP_MESSAGE:
+      g_value_set_boolean (value, filter->message);
       break;
     default:
       G_OBJECT_WARN_INVALID_PROPERTY_ID (object, prop_id, pspec);
@@ -334,8 +354,26 @@ gst_qrcode_dec_chain (GstPad * pad, GstObject * parent, GstBuffer * buf)
       /* Decoding stage */
       err = quirc_decode(&code, &data);
       if (!err) {
-        g_signal_emit(filter, gst_qrcode_dec_signals[SIGNAL_QRCODE],0, data.payload);
         GST_LOG_OBJECT (filter, "data: %s", data.payload);
+
+        g_signal_emit(filter, gst_qrcode_dec_signals[SIGNAL_QRCODE],0, data.payload);
+
+        if (filter->message) {
+            GstMessage *m;
+            GstStructure *s;
+
+            s = gst_structure_new ("qrcode",
+                "timestamp", G_TYPE_UINT64, GST_BUFFER_TIMESTAMP (buf),
+                //"type", G_TYPE_STRING, data.payload,
+                "symbol", G_TYPE_STRING, data.payload,
+                //"quality", G_TYPE_INT, quality,
+                 NULL);
+
+
+            m = gst_message_new_element (GST_OBJECT (filter), s);
+            gst_element_post_message (GST_ELEMENT (filter), m);
+
+        }
       }
     }
 

@@ -2,7 +2,7 @@ dnl required version of autoconf
 AC_PREREQ([2.53])
 
 dnl package name and package version here
-AC_INIT([gst-qrcode],[0.1.2])
+AC_INIT([gst-qrcode],[0.2.0])
 
 dnl required versions of gstreamer and plugins-base
 GST_REQUIRED=1.0.0
